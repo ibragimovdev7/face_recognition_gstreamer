@@ -1,24 +1,44 @@
 #include "face_detection.h"
+#include <onnxruntime/core/providers/cpu/cpu_provider_factory.h>
 #include <opencv2/opencv.hpp>
 #include <iostream>
 
-FaceDetector::FaceDetector(const std::string& model_path) {
-    if (!face_cascade.load(model_path)) {
-        throw std::runtime_error("Yuzni aniqlash modeli yuklanmadi: " + model_path);
-    }
+FaceDetector::FaceDetector(const std::string& model_path)
+    : env(ORT_LOGGING_LEVEL_WARNING, "MTCNN"),
+      session(env, model_path.c_str(), session_options) {
+    session_options.SetIntraOpNumThreads(1);
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
 }
 
 std::vector<cv::Rect> FaceDetector::detect(const cv::Mat& frame) {
     std::vector<cv::Rect> faces;
-    cv::Mat gray;
-    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-    face_cascade.detectMultiScale(gray, faces, 1.1, 5, 0, cv::Size(50, 50));
+    
+    // Tasvirni ONNX modeliga tayyorlash
+    cv::Mat resized;
+    cv::resize(frame, resized, cv::Size(160, 160)); // MTCNN modelining kirish hajmi
+    resized.convertTo(resized, CV_32F, 1 / 255.0);
+    resized = (resized - 0.5) / 0.5;
+
+    Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+        Ort::AllocatorWithDefaultOptions(), resized.ptr<float>(),
+        resized.total(), {1, 3, 160, 160});
+
+    auto output_tensors = session.Run(
+        Ort::RunOptions{nullptr}, &"input", &input_tensor, 1, &"output", 1);
+
+    // Natijalarni o'qish va yuz koordinatalarini qaytarish
+    float* output_data = output_tensors[0].GetTensorMutableData<float>();
+    for (int i = 0; i < 10; ++i) { // Modelning chiqish o'lchamiga moslashtiring
+        faces.emplace_back(cv::Rect(output_data[4 * i], output_data[4 * i + 1],
+                                    output_data[4 * i + 2], output_data[4 * i + 3]));
+    }
+
     return faces;
 }
 
-int main(int argc, char* argv[]) {
+int main() {
     std::string pipeline =
-        "rtspsrc location=rtsp://rtsp://admin:123456@192.168.1.112:554/stream_0 ! "
+        "rtspsrc location=rtsp://admin:123456@192.168.1.112:554/stream_0 ! "
         "decodebin ! videoconvert ! video/x-raw,format=BGR ! appsink";
 
     cv::VideoCapture cap(pipeline, cv::CAP_GSTREAMER);
@@ -27,7 +47,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    FaceDetector face_detector("models/haarcascade_frontalface_default.xml");
+    FaceDetector face_detector("models/mtcnn.onnx");
 
     cv::Mat frame;
     while (true) {
@@ -42,10 +62,7 @@ int main(int argc, char* argv[]) {
             cv::rectangle(frame, face, cv::Scalar(255, 0, 0), 2);
         }
 
-        // Natijani ko‘rsatish
-        cv::imshow("Face Detection", frame);
-
-        // Chiqish uchun 'q' tugmasini bosing
+        cv::imshow("RTSP Stream with Face Detection", frame);
         if (cv::waitKey(1) == 'q') break;
     }
 

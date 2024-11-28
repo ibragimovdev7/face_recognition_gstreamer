@@ -1,14 +1,12 @@
-cmake_minimum_required(VERSION 3.11)
-project(FaceRecognitionGStreamer)
+cmake_minimum_required(VERSION 3.10)
+project(MTCNN_Face_Detection)
 
 set(CMAKE_CXX_STANDARD 17)
 
 find_package(OpenCV REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(GST REQUIRED gstreamer-1.0)
 
-include_directories(${OpenCV_INCLUDE_DIRS} ${GST_INCLUDE_DIRS} include)
-link_directories(${GST_LIBRARY_DIRS})
+include_directories(${OpenCV_INCLUDE_DIRS} include)
+link_directories(${OpenCV_LIB_DIRS})
 
-add_executable(FaceRecognitionGStreamer src/main.cpp)
-target_link_libraries(FaceRecognitionGStreamer ${OpenCV_LIBS} ${GST_LIBRARIES})
+add_executable(mtcnn_face_detection src/main.cpp)
+target_link_libraries(mtcnn_face_detection ${OpenCV_LIBS} onnxruntime)

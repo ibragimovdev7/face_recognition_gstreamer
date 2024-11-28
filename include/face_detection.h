@@ -1,6 +1,7 @@
 #ifndef FACE_DETECTION_H
 #define FACE_DETECTION_H
 
+#include <onnxruntime/core/session/onnxruntime_cxx_api.h>
 #include <opencv2/opencv.hpp>
 
 class FaceDetector {
@@ -9,7 +10,9 @@ public:
     std::vector<cv::Rect> detect(const cv::Mat& frame);
 
 private:
-    cv::CascadeClassifier face_cascade;
+    Ort::Env env;
+    Ort::Session session;
+    Ort::SessionOptions session_options;
 };
 
 #endif // FACE_DETECTION_H
